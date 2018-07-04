@@ -1,6 +1,4 @@
-import os
 import re
-import subprocess
 from io import BytesIO
 from pathlib import Path
 
@@ -82,9 +80,11 @@ def install_mod_tile(force=False):
             run('make install')
             run('make install-mod_tile')
             run('ldconfig')
-    with sudo():
-        mkdir('/var/run/renderd')
-        chown('tilery:users', '/var/run/renderd')
+    mkdir('/var/run/renderd')
+    chown('tilery:users', '/var/run/renderd')
+    # Make it persistent after reboot.
+    put(BytesIO(b'd /var/run/renderd 0755 tilery users'),
+        '/usr/lib/tmpfiles.d/renderd.conf')
 
 
 def configure_mod_tile():
