@@ -19,7 +19,7 @@ Then install the dependencies:
 
 By default, it expect the `pianoforte` source to be in `pianoforte/`, but you
 can change that by either: passing the `--source-dir` option, setting the
-`PIANOFORTE_SOURCE_DIR` environment variable or setting the `source_dir` in the
+`SOURCE_DIR` environment variable or setting the `source_dir` in the
 config.
 
 
