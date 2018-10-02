@@ -6,7 +6,7 @@ After=syslog.target network.target postgresql.service
 Type=simple
 User=tilery
 WorkingDirectory=/srv/tilery/tmp/imposm
-ExecStart=/usr/bin/imposm3 run -config /srv/tilery/imposm.conf
+ExecStart=/usr/bin/imposm run -config /srv/tilery/imposm.conf
 Environment=PGHOST=/var/run/postgresql/
 Restart=always
 RestartSec=5

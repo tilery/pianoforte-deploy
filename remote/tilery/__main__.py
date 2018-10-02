@@ -56,10 +56,11 @@ def install_imposm(force=False, release='0.6.0-alpha.4'):
     # Cf https://github.com/omniscale/imposm3/issues/165#issuecomment-395993259
     wget(f'https://github.com/omniscale/imposm3/releases/download/v{release}/imposm-{release}-linux-x86-64.tar.gz',   # noqa
          '/tmp/imposm.tar.gz')
-    run('tar -xzf /tmp/imposm.tar.gz --directory /tmp')
+    run('tar -xzf /tmp/imposm.tar.gz --directory /srv/tilery/tmp')
     with sudo():
-        run(f'ln --symbolic --force /tmp/imposm-{release}-linux-x86-64/imposm '
-            '/usr/bin/imposm')
+        run(f'ln --symbolic --force '
+            f'/srv/tilery/tmp/imposm-{release}-linux-x86-64/imposm '
+            f'/usr/bin/imposm')
     with sudo(user='tilery'):
         mkdir('/srv/tilery/tmp/imposm')
 
