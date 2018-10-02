@@ -67,25 +67,11 @@ def install_imposm(force=False, release='0.6.0-alpha.4'):
 
 @minicli.cli
 def install_mod_tile(force=False):
-    if exists('/usr/local/bin/renderd') and not force:
-        print('mod_tile already installed')
-        return
-    wget('https://github.com/SomeoneElseOSM/mod_tile/archive/master.zip',  # noqa
-        '/tmp/mod_tile.zip')
-    run('unzip -n /tmp/mod_tile.zip -d /tmp/')
-    with cd('/tmp/mod_tile-master'):
-        run('./autogen.sh')
-        run('./configure')
-        run('make')
+    if not exists('/usr/bin/renderd') or force:
         with sudo():
-            run('make install')
-            run('make install-mod_tile')
-            run('ldconfig')
-    mkdir('/var/run/renderd')
-    chown('tilery:users', '/var/run/renderd')
-    # Make it persistent after reboot.
-    put(BytesIO(b'd /var/run/renderd 0755 tilery users'),
-        '/usr/lib/tmpfiles.d/renderd.conf')
+            run('add-apt-repository --yes ppa:osmadmins/ppa')
+            run('apt-get update')
+            run('apt install --yes libapache2-mod-tile')
 
 
 def configure_mod_tile():
@@ -172,7 +158,7 @@ def deploy():
         put(config.source_dir / 'mapping.yml', '/srv/tilery/mapping.yml')
         imposm_conf = template('remote/tilery/imposm.conf', **config)
         put(imposm_conf, '/srv/tilery/imposm.conf')
-        put('remote/tilery/renderd.conf', '/srv/tilery/renderd.conf')
+        put('remote/tilery/renderd.conf', '/etc/renderd.conf')
         put(config.source_dir / 'dist/', '/srv/tilery/pianoforte/')
         put(config.source_dir / 'data/simplified_boundary.json',
             '/srv/tilery/pianoforte/data/simplified_boundary.json')
