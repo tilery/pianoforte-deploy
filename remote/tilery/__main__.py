@@ -6,7 +6,7 @@ import minicli
 from usine import (cd, chown, config, env, exists, get, mkdir, mv, put, run,
                    screen, sudo, template)
 
-from ..commons import main, restart, service, ssh_keys
+from ..commons import main, restart, systemctl, ssh_keys
 
 
 def wget(url, dest):
@@ -148,6 +148,13 @@ def bootstrap():
     db()
     services()
     ssh_keys()
+
+
+def service(name):
+    with sudo():
+        put(f'remote/tilery/{name}.service',
+            f'/etc/systemd/system/{name}.service')
+        systemctl(f'enable {name}.service')
 
 
 @minicli.cli
