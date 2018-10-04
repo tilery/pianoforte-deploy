@@ -226,7 +226,7 @@ def import_custom_data():
     wget('http://nuage.yohanboniface.me/boundary.json', '/tmp/boundary.json')
     run("""ogr2ogr --config PG_USE_COPY YES -lco GEOMETRY_NAME=geometry \
         -lco DROP_TABLE=IF_EXISTS -f PGDump /tmp/boundary.sql /tmp/boundary.json -sql \
-        \\'SELECT name,"name:en","name:fr","name:ar","name:es","name:de","name:ru","ISO3166-1:alpha2" AS iso FROM boundary\\' -nln itl_boundary""")
+        \\'SELECT name,"name:en","name:fr","name:ar","name:es","name:de","name:ru",iso FROM boundary\\' -nln itl_boundary""")
     import_sql_file('/tmp/boundary.sql')
     wget('https://raw.githubusercontent.com/tilery/mae-boundaries/master/city.csv',
          '/tmp/city.csv')
