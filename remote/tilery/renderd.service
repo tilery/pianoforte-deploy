@@ -5,7 +5,7 @@ After=syslog.target network.target postgresql.service
 [Service]
 Type=simple
 User=tilery
-ExecStart=/usr/local/bin/renderd -f -c /srv/tilery/renderd.conf
+ExecStart=/usr/bin/renderd -f -c /etc/renderd.conf
 Restart=always
 RestartSec=5
 SyslogIdentifier=renderd
