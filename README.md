@@ -50,6 +50,9 @@ override the host by using the `--hostname` in any command.
 
 ### Send config files
 
+Set the `SOURCE_DIR` env var pointing to the pianoforte folder (or pass it
+to the command line as `--source-dir`). Then:
+
     python -m remote.tilery deploy
 
 ### Download OSM data and shapefiles
