@@ -1,0 +1,3 @@
+#!/bin/bash
+
+python /srv/tilery/src/matomo.py --url=https://matomo.quaidorsay.fr --token-auth=$${matomo_token} --idsite=1 --recorders=4 --enable-http-errors --enable-http-redirects --enable-static --enable-bots --exclude-path=/munin/* --exclude-path=/access.html /var/log/nginx/access.log.1

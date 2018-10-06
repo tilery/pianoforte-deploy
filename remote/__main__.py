@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 from io import BytesIO
 from pathlib import Path
 
@@ -83,10 +84,10 @@ def install_imposm(force=False, release='0.6.0-alpha.4'):
     # Cf https://github.com/omniscale/imposm3/issues/165#issuecomment-395993259
     wget(f'https://github.com/omniscale/imposm3/releases/download/v{release}/imposm-{release}-linux-x86-64.tar.gz',   # noqa
          '/tmp/imposm.tar.gz')
-    run('tar -xzf /tmp/imposm.tar.gz --directory /srv/tilery/tmp')
+    run('tar -xzf /tmp/imposm.tar.gz --directory /srv/tilery/src')
     with sudo():
         run(f'ln --symbolic --force '
-            f'/srv/tilery/tmp/imposm-{release}-linux-x86-64/imposm '
+            f'/srv/tilery/src/imposm-{release}-linux-x86-64/imposm '
             f'/usr/bin/imposm')
     with sudo(user='tilery'):
         mkdir('/srv/tilery/tmp/imposm')
@@ -135,6 +136,19 @@ def configure_munin():
 def install_goaccess():
     put('remote/run-goaccess', '/etc/cron.hourly/run-goaccess')
     run('chmod +x /etc/cron.hourly/run-goaccess')
+
+
+@minicli.cli
+def install_matomo():
+    token = os.environ.get('MATOMO_TOKEN')
+    if not token:
+        sys.exist('You need to provide $MATOMO_TOKEN env var')
+    wget('https://raw.githubusercontent.com/matomo-org/matomo-log-analytics'
+         '/master/import_logs.py',
+         '/srv/tilery/src/matomo.py')
+    cron = template('remote/run-matomo', matomo_token=token)
+    put(cron, '/etc/cron.daily/run-matomo')
+    run('chmod +x /etc/cron.daily/run-matomo')
 
 
 @minicli.cli
