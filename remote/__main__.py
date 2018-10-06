@@ -1,16 +1,43 @@
+import os
 import re
 from io import BytesIO
 from pathlib import Path
 
 import minicli
-from usine import (cd, chown, config, env, exists, get, mkdir, mv, put, run,
-                   screen, sudo, template)
-
-from ..commons import main, restart, systemctl, ssh_keys
+import requests
+from usine import (cd, chown, config, connect, env, exists, get, mkdir, mv,
+                   put, run, screen, sudo, template)
 
 
 def wget(url, dest):
     run(f'wget {url} -O {dest}')
+
+
+@minicli.cli
+def ssh_keys():
+    """Install ssh keys from remote urls."""
+    with sudo():
+        for name, url in config.get('ssh_key_urls', {}).items():
+            key = requests.get(url).text.replace('\n', '')
+            run('grep -q -r "{key}" .ssh/authorized_keys || echo "{key}" '
+                '| tee --append .ssh/authorized_keys'.format(key=key))
+
+
+@minicli.cli
+def systemctl(*args):
+    """Run a systemctl command on the remote server.
+
+    :command: the systemctl command to run.
+    """
+    run(f'systemctl {" ".join(args)}')
+
+
+@minicli.cli
+def restart(services=None):
+    """Restart services."""
+    services = services or 'renderd apache2 imposm munin-node'
+    with sudo():
+        systemctl(f'restart {services}')
 
 
 @minicli.cli
@@ -25,7 +52,7 @@ def system():
     run('which sudo || apt install sudo')
     with sudo():
         run('apt update')
-        run('apt install -y postgresql postgis gdal-bin screen '
+        run('apt install -y postgresql postgis gdal-bin screen nginx '
             'software-properties-common wget unzip autoconf libtool g++ '
             'libmapnik-dev libleveldb1v5 libgeos-dev goaccess '
             'libprotobuf-dev unifont curl zlib1g-dev uuid-dev python-psycopg2 '
@@ -74,15 +101,16 @@ def install_mod_tile(force=False):
             run('apt install --yes libapache2-mod-tile')
 
 
+@minicli.cli
 def configure_mod_tile():
     with sudo(user='tilery'):
         mkdir('/srv/tilery/tmp/tiles')
         mkdir('/srv/tilery/renderd')
     with sudo(), cd('/etc/apache2/'):
-        put('remote/tilery/tile.load', 'mods-available/tile.load')
-        put('remote/tilery/tile.conf', 'mods-available/tile.conf')
-        put('remote/tilery/apache.conf', 'sites-enabled/000-default.conf')
-        put('remote/tilery/ports.conf', 'ports.conf')
+        put('remote/tile.load', 'mods-available/tile.load')
+        put('remote/tile.conf', 'mods-available/tile.conf')
+        put('remote/apache.conf', 'sites-enabled/000-default.conf')
+        put('remote/ports.conf', 'ports.conf')
         run('a2enmod tile')
 
 
@@ -92,8 +120,8 @@ def configure_munin():
         'postgres_connections_db', 'postgres_users', 'postgres_xlog',
         'nginx_status', 'nginx_request']
     with sudo(), cd('/etc/munin'):
-        put('remote/tilery/munin.conf', 'munin.conf')
-        for plugin in Path('remote/tilery/munin').glob('*'):
+        put('remote/munin.conf', 'munin.conf')
+        for plugin in Path('remote/munin').glob('*'):
             put(plugin, f'plugins/{plugin.name}')
             run(f'chmod +x plugins/{plugin.name}')
         for name in psql_plugins:
@@ -105,8 +133,35 @@ def configure_munin():
 
 
 def install_goaccess():
-    put('remote/tilery/run-goaccess', '/etc/cron.hourly/run-goaccess')
+    put('remote/run-goaccess', '/etc/cron.hourly/run-goaccess')
     run('chmod +x /etc/cron.hourly/run-goaccess')
+
+
+@minicli.cli
+def http():
+    """Configure Nginx and letsencrypt."""
+    # When we'll have a domain.
+    put('remote/piano.conf', '/etc/nginx/snippets/piano.conf')
+    put('remote/forte.conf', '/etc/nginx/snippets/forte.conf')
+    put('remote/letsencrypt.conf', '/etc/nginx/snippets/letsencrypt.conf')
+    put('remote/ssl.conf', '/etc/nginx/snippets/ssl.conf')
+    domain = config.piano_domains[0]
+    pempath = f'/etc/letsencrypt/live/{domain}/fullchain.pem'
+    if exists(pempath):
+        print(f'{pempath} found, using https configuration')
+        conf = template('remote/nginx-https.conf',
+                        piano_domains=' '.join(config.piano_domains),
+                        forte_domains=' '.join(config.forte_domains),
+                        domain=domain)
+    else:
+        print(f'{pempath} not found, using http configuration')
+        # Before letsencrypt.
+        conf = template('remote/nginx-http.conf',
+                        piano_domains=' '.join(config.piano_domains),
+                        forte_domains=' '.join(config.forte_domains),
+                        domain=domain)
+    put(conf, '/etc/nginx/sites-enabled/pianoforte.conf')
+    restart(services='nginx')
 
 
 @minicli.cli
@@ -119,7 +174,7 @@ def db():
         run(f'ln --symbolic --force {dest} {src}')
         chown('postgres:postgres', src)
     with sudo(user='postgres'):
-        conf = template('remote/tilery/postgresql.conf', **config)
+        conf = template('remote/postgresql.conf', **config)
         put(conf,
             f'/etc/postgresql/{config.psql_version}/main/postgresql.conf')
         run('createuser tilery || exit 0')
@@ -133,12 +188,44 @@ def bootstrap():
     system()
     db()
     services()
+    http()
+    if config.ssl:
+        letsencrypt()
+        # Now put the https ready Nginx conf.
+        http()
     ssh_keys()
+
+
+@minicli.cli
+def access_logs():
+    """See the nginx access logs."""
+    run('tail -F /var/log/nginx/access.log')
+
+
+@minicli.cli
+def error_logs():
+    """See the nginx access logs."""
+    run('tail -F /var/log/nginx/error.log')
+
+
+@minicli.cli
+def letsencrypt():
+    """Configure letsencrypt."""
+    with sudo():
+        run('add-apt-repository --yes ppa:certbot/certbot')
+        run('apt update')
+        run('apt install -y certbot')
+    mkdir('/var/www/letsencrypt/.well-known/acme-challenge')
+    domains = ','.join(list(config.piano_domains) + list(config.forte_domains))
+    certbot_conf = template('remote/certbot.ini', domains=domains)
+    put(certbot_conf, '/var/www/certbot.ini')
+    run('certbot certonly -c /var/www/certbot.ini --non-interactive '
+        '--agree-tos')
 
 
 def service(name):
     with sudo():
-        put(f'remote/tilery/{name}.service',
+        put(f'remote/{name}.service',
             f'/etc/systemd/system/{name}.service')
         systemctl(f'enable {name}.service')
 
@@ -156,12 +243,10 @@ def deploy():
     with sudo(user='tilery'):
         mkdir('/srv/tilery/pianoforte/data')
         put(config.source_dir / 'mapping.yml', '/srv/tilery/mapping.yml')
-        imposm_conf = template('remote/tilery/imposm.conf', **config)
+        imposm_conf = template('remote/imposm.conf', **config)
         put(imposm_conf, '/srv/tilery/imposm.conf')
-        put('remote/tilery/renderd.conf', '/etc/renderd.conf')
+        put('remote/renderd.conf', '/etc/renderd.conf')
         put(config.source_dir / 'dist/', '/srv/tilery/pianoforte/')
-        put(config.source_dir / 'data/simplified_boundary.json',
-            '/srv/tilery/pianoforte/data/simplified_boundary.json')
         put(config.source_dir / 'fonts/', '/srv/tilery/pianoforte/fonts')
         put(config.source_dir / 'icon/', '/srv/tilery/pianoforte/icon')
 
@@ -177,11 +262,11 @@ def download_shapefile(name, url, force):
 @minicli.cli
 def download(force=False):
     """Download OSM data and shapefiles."""
-    path = '/srv/tilery/tmp/data.osm.pbf'
-    if not exists(path) or force:
-        url = config.download_url
-        with sudo(user='tilery'):
-            wget(url, path)
+    # path = '/srv/tilery/tmp/data.osm.pbf'
+    # if not exists(path) or force:
+    #     url = config.download_url
+    #     with sudo(user='tilery'):
+    #         wget(url, path)
     domain = 'http://data.openstreetmapdata.com/'
     download_shapefile(
         'simplified-land-polygons-complete-3857/simplified_land_polygons.shp',
@@ -347,5 +432,14 @@ def slow_query_stats(sort='date'):
     print('Total requests:', len(queries), f'(sorted by {sort})')
 
 
+@minicli.wrap
+def wrapper(hostname, configpath, source_dir):
+    config.source_dir = Path(source_dir or os.environ.get('SOURCE_DIR')
+                             or config.source_dir or 'src')
+    with connect(hostname=hostname, configpath=configpath):
+        yield
+
+
 if __name__ == '__main__':
-    main(hostname='pfetalab-tilery')
+    minicli.run(hostname='pfmae', configpath='remote/config.yml',
+                source_dir=None)

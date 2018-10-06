@@ -11,3 +11,7 @@ forte_domains:
 - c.forte.tiles.data.gouv.fr
 ssl: true
 psql_version: 10
+pfmae:
+  ssl: false
+  piano_domains:
+  - tmpcarto.quaidorsay.fr
